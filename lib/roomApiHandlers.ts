@@ -20,12 +20,6 @@ import { POKER_CARDS, type PokerCard, type SessionPayload } from './types.js'
 
 const MIN_PASSWORD_LENGTH = 4
 
-export function pathSegments(req: VercelRequest): string[] {
-  const raw = req.query.path
-  if (raw == null) return []
-  return Array.isArray(raw) ? raw : [raw]
-}
-
 export async function handleCreateRoom(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method !== 'POST') {
     methodNotAllowed(res, ['POST'])
