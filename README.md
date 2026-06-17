@@ -30,7 +30,7 @@ Open the app in two browser tabs to simulate a team session. Local dev uses a li
 
 ```
 planning-poker/
-├── api/      # Vercel serverless routes (3 functions: health, rooms/[action], rooms/[roomId]/[action])
+├── api/      # Vercel serverless routes (4 functions: health, create, join, [roomId]/[action])
 ├── client/   # Vite React frontend
 ├── lib/      # Shared room logic
 ├── vercel.json
