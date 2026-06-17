@@ -5,7 +5,7 @@
   "outputDirectory": "client/dist",
   "devCommand": "npm run dev:web",
   "functions": {
-    "api/rooms/*/stream.ts": {
+    "api/rooms/[[...path]].ts": {
       "maxDuration": 300
     }
   },
