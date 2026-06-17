@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { emitRoomState } from '../../lib/broadcast.js'
-import { updateParticipantAvatar } from '../../lib/rooms.js'
-import { methodNotAllowed, readJsonBody } from '../../lib/http.js'
+import { emitRoomState } from '../../../lib/broadcast.js'
+import { updateParticipantAvatar } from '../../../lib/rooms.js'
+import { methodNotAllowed, readJsonBody } from '../../../lib/http.js'
 
 interface AvatarBody {
   participantId?: string

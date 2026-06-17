@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { subscribe } from '../../lib/broadcast.js'
-import { getRoom } from '../../lib/rooms.js'
-import { methodNotAllowed } from '../../lib/http.js'
+import { subscribe } from '../../../lib/broadcast.js'
+import { getRoom } from '../../../lib/rooms.js'
+import { methodNotAllowed } from '../../../lib/http.js'
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
