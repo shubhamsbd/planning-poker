@@ -72,11 +72,11 @@ export function Lobby({ connected, error, onCreateRoom, onJoinRoom, onClearError
     const ok =
       mode === 'create'
         ? await onCreateRoom(
-            name,
-            passwordProtected,
-            passwordProtected ? password : undefined,
-            customRoomId || undefined,
-          )
+          name,
+          passwordProtected,
+          passwordProtected ? password : undefined,
+          customRoomId || undefined,
+        )
         : await onJoinRoom(roomId, name, joinInfo?.passwordProtected ? password : undefined)
 
     setLoading(false)
@@ -103,22 +103,20 @@ export function Lobby({ connected, error, onCreateRoom, onJoinRoom, onClearError
           <button
             type="button"
             onClick={() => setMode('create')}
-            className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
-              mode === 'create'
+            className={`rounded-xl px-4 py-2 text-sm font-medium transition ${mode === 'create'
                 ? 'bg-brand-yellow-light text-brand-black shadow-sm'
                 : 'text-muted hover:text-brand-black'
-            }`}
+              }`}
           >
             Create room
           </button>
           <button
             type="button"
             onClick={() => setMode('join')}
-            className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
-              mode === 'join'
+            className={`rounded-xl px-4 py-2 text-sm font-medium transition ${mode === 'join'
                 ? 'bg-brand-yellow-light text-brand-black shadow-sm'
                 : 'text-muted hover:text-brand-black'
-            }`}
+              }`}
           >
             Join room
           </button>
@@ -130,7 +128,7 @@ export function Lobby({ connected, error, onCreateRoom, onJoinRoom, onClearError
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="Alex"
+              placeholder="Deo"
               required
               className="input-field w-full rounded-xl px-4 py-3"
             />
