@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis'
+import { createClient } from 'redis'
 import type { Participant } from './types.js'
 
 const ROOM_KEY_PREFIX = 'room:'
@@ -18,36 +19,78 @@ export interface PersistedRoom {
 
 const memoryRooms = new Map<string, PersistedRoom>()
 
-let redisClient: Redis | null | undefined
+type StorageBackend = 'memory' | 'upstash' | 'redis-url'
 
-function getRedis(): Redis | null {
-  if (redisClient !== undefined) return redisClient
+let upstashClient: Redis | null | undefined
+
+function getStorageBackend(): StorageBackend {
+  const restUrl = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL
+  const restToken = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN
+  if (restUrl && restToken) return 'upstash'
+  if (process.env.REDIS_URL) return 'redis-url'
+  return 'memory'
+}
+
+function getUpstashClient(): Redis | null {
+  if (upstashClient !== undefined) return upstashClient
 
   const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL
   const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN
   if (!url || !token) {
-    redisClient = null
+    upstashClient = null
     return null
   }
 
-  redisClient = new Redis({ url, token })
-  return redisClient
+  upstashClient = new Redis({ url, token })
+  return upstashClient
+}
+
+async function withRedisUrlClient<T>(
+  fn: (client: ReturnType<typeof createClient>) => Promise<T>,
+): Promise<T | null> {
+  const url = process.env.REDIS_URL
+  if (!url) return null
+
+  const client = createClient({ url })
+  await client.connect()
+  try {
+    return await fn(client)
+  } finally {
+    await client.quit()
+  }
 }
 
 export function isPersistentStorageEnabled(): boolean {
-  return getRedis() !== null
+  return getStorageBackend() !== 'memory'
 }
 
 function roomKey(roomId: string): string {
   return `${ROOM_KEY_PREFIX}${roomId.toUpperCase()}`
 }
 
+function parseStoredRoom(value: unknown): PersistedRoom | null {
+  if (!value || typeof value !== 'object') return null
+  return value as PersistedRoom
+}
+
 export async function loadPersistedRoom(roomId: string): Promise<PersistedRoom | null> {
   const normalizedId = roomId.toUpperCase()
-  const redis = getRedis()
+  const key = roomKey(normalizedId)
+  const backend = getStorageBackend()
 
-  if (redis) {
-    const stored = await redis.get<PersistedRoom>(roomKey(normalizedId))
+  if (backend === 'upstash') {
+    const redis = getUpstashClient()
+    if (!redis) return null
+    const stored = await redis.get<PersistedRoom>(key)
+    return stored ?? null
+  }
+
+  if (backend === 'redis-url') {
+    const stored = await withRedisUrlClient(async (client) => {
+      const raw = await client.get(key)
+      if (!raw) return null
+      return parseStoredRoom(JSON.parse(raw))
+    })
     return stored ?? null
   }
 
@@ -57,10 +100,20 @@ export async function loadPersistedRoom(roomId: string): Promise<PersistedRoom |
 export async function savePersistedRoom(room: PersistedRoom): Promise<void> {
   const normalizedId = room.id.toUpperCase()
   const payload: PersistedRoom = { ...room, id: normalizedId, revision: room.revision + 1 }
-  const redis = getRedis()
+  const key = roomKey(normalizedId)
+  const backend = getStorageBackend()
 
-  if (redis) {
-    await redis.set(roomKey(normalizedId), payload, { ex: ROOM_TTL_SECONDS })
+  if (backend === 'upstash') {
+    const redis = getUpstashClient()
+    if (!redis) return
+    await redis.set(key, payload, { ex: ROOM_TTL_SECONDS })
+    return
+  }
+
+  if (backend === 'redis-url') {
+    await withRedisUrlClient(async (client) => {
+      await client.set(key, JSON.stringify(payload), { EX: ROOM_TTL_SECONDS })
+    })
     return
   }
 
@@ -69,10 +122,20 @@ export async function savePersistedRoom(room: PersistedRoom): Promise<void> {
 
 export async function deletePersistedRoom(roomId: string): Promise<void> {
   const normalizedId = roomId.toUpperCase()
-  const redis = getRedis()
+  const key = roomKey(normalizedId)
+  const backend = getStorageBackend()
 
-  if (redis) {
-    await redis.del(roomKey(normalizedId))
+  if (backend === 'upstash') {
+    const redis = getUpstashClient()
+    if (!redis) return
+    await redis.del(key)
+    return
+  }
+
+  if (backend === 'redis-url') {
+    await withRedisUrlClient(async (client) => {
+      await client.del(key)
+    })
     return
   }
 

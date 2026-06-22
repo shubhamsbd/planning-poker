@@ -43,11 +43,11 @@ planning-poker/
 2. Import the project in [Vercel](https://vercel.com/new).
 3. Use the defaults from `vercel.json` (no extra build settings required).
 4. Add a **Redis store** so rooms survive across serverless invocations and page reloads:
-   - In the Vercel project, open **Storage** → **Create Database** → **Upstash Redis** (or **KV**).
-   - Connect it to the project. Vercel injects `KV_REST_API_URL` and `KV_REST_API_TOKEN` automatically.
+   - In the Vercel project, open **Storage** → **Create Database** → **Redis** (Official Redis for Vercel) or **Upstash** → Redis.
+   - Connect it to the project. Vercel injects connection env vars automatically (`REDIS_URL` for Official Redis, or `KV_REST_API_URL` / `KV_REST_API_TOKEN` for Upstash).
 5. Redeploy.
 
-Without Redis/KV, each API route runs in an isolated function with its own memory — rooms created on one route are invisible to others, and reload will show "Room not found".
+Without Redis linked, each API route runs in an isolated function with its own memory — rooms created on one route are invisible to others, and reload will show "Room not found". The app already integrates Redis in `lib/roomPersistence.ts`; you do **not** need to add the Vercel quickstart code yourself.
 
 The frontend and API are served from the same Vercel project — no separate backend host is needed.
 
@@ -56,8 +56,9 @@ The frontend and API are served from the same Vercel project — no separate bac
 | Variable | Default | Where |
 | -------- | ------- | ----- |
 | `VITE_API_URL` | `` (same origin) | client — set only if the API is on another origin |
-| `KV_REST_API_URL` | — | Vercel — set automatically when Redis/KV is linked |
-| `KV_REST_API_TOKEN` | — | Vercel — set automatically when Redis/KV is linked |
+| `KV_REST_API_URL` | — | Vercel Upstash — set automatically when linked |
+| `KV_REST_API_TOKEN` | — | Vercel Upstash — set automatically when linked |
+| `REDIS_URL` | — | Official Redis for Vercel — set automatically when linked |
 | `UPSTASH_REDIS_REST_URL` | — | Alternative to `KV_*` (Upstash direct) |
 | `UPSTASH_REDIS_REST_TOKEN` | — | Alternative to `KV_*` (Upstash direct) |
 
