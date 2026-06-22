@@ -28,7 +28,7 @@ app.get('/api/health', (_req, res) => {
 
 const MIN_PASSWORD_LENGTH = 4
 
-app.post('/api/rooms/create', (req, res) => {
+app.post('/api/rooms/create', async (req, res) => {
   const { name, roomId, passwordProtected, password, avatar } = req.body as {
     name?: string
     roomId?: string
@@ -52,7 +52,7 @@ app.post('/api/rooms/create', (req, res) => {
     return
   }
 
-  const { room, participantId } = createRoom(
+  const { room, participantId } = await createRoom(
     name,
     roomId,
     isProtected ? trimmedPassword : undefined,
@@ -65,7 +65,7 @@ app.post('/api/rooms/create', (req, res) => {
   res.json({ ok: true, data: payload })
 })
 
-app.post('/api/rooms/join', (req, res) => {
+app.post('/api/rooms/join', async (req, res) => {
   const { roomId, name, password, avatar } = req.body as {
     roomId?: string
     name?: string
@@ -77,7 +77,7 @@ app.post('/api/rooms/join', (req, res) => {
     return
   }
 
-  const room = getRoom(roomId)
+  const room = await getRoom(roomId)
   if (!room) {
     res.status(404).json({ ok: false, error: 'Room not found' })
     return
@@ -91,7 +91,7 @@ app.post('/api/rooms/join', (req, res) => {
     return
   }
 
-  const result = joinRoom(roomId, name, trimmedPassword || undefined, avatar)
+  const result = await joinRoom(roomId, name, trimmedPassword || undefined, avatar)
   if (!result.ok) {
     const errors = {
       not_found: { status: 404, message: 'Room not found' },
@@ -112,9 +112,9 @@ app.post('/api/rooms/join', (req, res) => {
   res.json({ ok: true, data: payload })
 })
 
-app.get('/api/rooms/:roomId/info', (req, res) => {
+app.get('/api/rooms/:roomId/info', async (req, res) => {
   const { roomId } = req.params
-  const info = getRoomPublicInfo(roomId)
+  const info = await getRoomPublicInfo(roomId)
   if (!info) {
     res.status(404).json({ ok: false, error: 'Room not found' })
     return
@@ -122,7 +122,7 @@ app.get('/api/rooms/:roomId/info', (req, res) => {
   res.json({ ok: true, data: info })
 })
 
-app.get('/api/rooms/:roomId/stream', (req, res) => {
+app.get('/api/rooms/:roomId/stream', async (req, res) => {
   const { roomId } = req.params
   const participantId = req.query.participantId
 
@@ -131,7 +131,7 @@ app.get('/api/rooms/:roomId/stream', (req, res) => {
     return
   }
 
-  const room = getRoom(roomId)
+  const room = await getRoom(roomId)
   if (!room || !room.participants.has(participantId)) {
     res.status(404).json({ ok: false, error: 'Room or participant not found' })
     return
@@ -140,7 +140,7 @@ app.get('/api/rooms/:roomId/stream', (req, res) => {
   subscribe(roomId, participantId, res)
 })
 
-app.post('/api/rooms/:roomId/role', (req, res) => {
+app.post('/api/rooms/:roomId/role', async (req, res) => {
   const { roomId } = req.params
   const { participantId, role } = req.body as {
     participantId?: string
@@ -152,7 +152,7 @@ app.post('/api/rooms/:roomId/role', (req, res) => {
     return
   }
 
-  if (!setCreatorRole(roomId, participantId, role)) {
+  if (!(await setCreatorRole(roomId, participantId, role))) {
     res.status(403).json({ ok: false, error: 'Only the room owner can choose their role once' })
     return
   }
@@ -161,7 +161,7 @@ app.post('/api/rooms/:roomId/role', (req, res) => {
   res.json({ ok: true })
 })
 
-app.post('/api/rooms/:roomId/scrum-master', (req, res) => {
+app.post('/api/rooms/:roomId/scrum-master', async (req, res) => {
   const { roomId } = req.params
   const { participantId, scrumMasterId } = req.body as {
     participantId?: string
@@ -173,7 +173,7 @@ app.post('/api/rooms/:roomId/scrum-master', (req, res) => {
     return
   }
 
-  if (!assignScrumMaster(roomId, participantId, scrumMasterId)) {
+  if (!(await assignScrumMaster(roomId, participantId, scrumMasterId))) {
     res.status(403).json({
       ok: false,
       error: 'Only the room owner can assign a scrum master while playing as a participant',
@@ -185,7 +185,7 @@ app.post('/api/rooms/:roomId/scrum-master', (req, res) => {
   res.json({ ok: true })
 })
 
-app.post('/api/rooms/:roomId/avatar', (req, res) => {
+app.post('/api/rooms/:roomId/avatar', async (req, res) => {
   const { roomId } = req.params
   const { participantId, avatar } = req.body as {
     participantId?: string
@@ -197,7 +197,7 @@ app.post('/api/rooms/:roomId/avatar', (req, res) => {
     return
   }
 
-  if (!updateParticipantAvatar(roomId, participantId, avatar)) {
+  if (!(await updateParticipantAvatar(roomId, participantId, avatar))) {
     res.status(400).json({ ok: false, error: 'Unable to update avatar' })
     return
   }
@@ -206,7 +206,7 @@ app.post('/api/rooms/:roomId/avatar', (req, res) => {
   res.json({ ok: true })
 })
 
-app.post('/api/rooms/:roomId/vote', (req, res) => {
+app.post('/api/rooms/:roomId/vote', async (req, res) => {
   const { roomId } = req.params
   const { participantId, value } = req.body as { participantId?: string; value?: PokerCard }
 
@@ -215,7 +215,7 @@ app.post('/api/rooms/:roomId/vote', (req, res) => {
     return
   }
 
-  if (!castVote(roomId, participantId, value)) {
+  if (!(await castVote(roomId, participantId, value))) {
     res.status(400).json({ ok: false, error: 'Unable to cast vote' })
     return
   }
@@ -224,7 +224,7 @@ app.post('/api/rooms/:roomId/vote', (req, res) => {
   res.json({ ok: true })
 })
 
-app.post('/api/rooms/:roomId/reveal', (req, res) => {
+app.post('/api/rooms/:roomId/reveal', async (req, res) => {
   const { roomId } = req.params
   const { participantId } = req.body as { participantId?: string }
 
@@ -233,7 +233,7 @@ app.post('/api/rooms/:roomId/reveal', (req, res) => {
     return
   }
 
-  if (!revealVotes(roomId, participantId)) {
+  if (!(await revealVotes(roomId, participantId))) {
     res.status(403).json({ ok: false, error: 'Only the scrum master can reveal votes' })
     return
   }
@@ -242,7 +242,7 @@ app.post('/api/rooms/:roomId/reveal', (req, res) => {
   res.json({ ok: true })
 })
 
-app.post('/api/rooms/:roomId/reset', (req, res) => {
+app.post('/api/rooms/:roomId/reset', async (req, res) => {
   const { roomId } = req.params
   const { participantId } = req.body as { participantId?: string }
 
@@ -251,7 +251,7 @@ app.post('/api/rooms/:roomId/reset', (req, res) => {
     return
   }
 
-  if (!resetVotes(roomId, participantId)) {
+  if (!(await resetVotes(roomId, participantId))) {
     res.status(403).json({ ok: false, error: 'Only the scrum master can reset votes' })
     return
   }
@@ -260,7 +260,7 @@ app.post('/api/rooms/:roomId/reset', (req, res) => {
   res.json({ ok: true })
 })
 
-app.post('/api/rooms/:roomId/leave', (req, res) => {
+app.post('/api/rooms/:roomId/leave', async (req, res) => {
   const { roomId } = req.params
   const { participantId } = req.body as { participantId?: string }
 
@@ -269,12 +269,12 @@ app.post('/api/rooms/:roomId/leave', (req, res) => {
     return
   }
 
-  leaveRoom(participantId, roomId)
+  await leaveRoom(participantId, roomId)
   emitRoomState(roomId)
   res.json({ ok: true })
 })
 
-app.post('/api/rooms/:roomId/destroy', (req, res) => {
+app.post('/api/rooms/:roomId/destroy', async (req, res) => {
   const { roomId } = req.params
   const { participantId } = req.body as { participantId?: string }
 
@@ -283,7 +283,7 @@ app.post('/api/rooms/:roomId/destroy', (req, res) => {
     return
   }
 
-  if (!destroyRoom(roomId, participantId)) {
+  if (!(await destroyRoom(roomId, participantId))) {
     res.status(403).json({ ok: false, error: 'Only the room creator can close the room' })
     return
   }

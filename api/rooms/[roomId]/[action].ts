@@ -15,12 +15,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (action === 'info') {
-    handleRoomInfo(req, res, roomId)
+    await handleRoomInfo(req, res, roomId)
     return
   }
 
   if (action === 'stream') {
-    handleRoomStream(req, res, roomId)
+    await handleRoomStream(req, res, roomId)
     return
   }
 

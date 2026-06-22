@@ -50,7 +50,7 @@ export async function handleCreateRoom(req: VercelRequest, res: VercelResponse):
     return
   }
 
-  const { room, participantId } = createRoom(
+  const { room, participantId } = await createRoom(
     body.name,
     body.roomId,
     passwordProtected ? password : undefined,
@@ -81,7 +81,7 @@ export async function handleJoinRoom(req: VercelRequest, res: VercelResponse): P
     return
   }
 
-  const room = getRoom(body.roomId)
+  const room = await getRoom(body.roomId)
   if (!room) {
     res.status(404).json({ ok: false, error: 'Room not found' })
     return
@@ -95,7 +95,7 @@ export async function handleJoinRoom(req: VercelRequest, res: VercelResponse): P
     return
   }
 
-  const result = joinRoom(body.roomId, body.name, password || undefined, body.avatar)
+  const result = await joinRoom(body.roomId, body.name, password || undefined, body.avatar)
   if (!result.ok) {
     const errors: Record<typeof result.reason, { status: number; message: string }> = {
       not_found: { status: 404, message: 'Room not found' },
@@ -120,17 +120,17 @@ export async function handleJoinRoom(req: VercelRequest, res: VercelResponse): P
   res.status(200).json({ ok: true, data: payload })
 }
 
-export function handleRoomInfo(
+export async function handleRoomInfo(
   req: VercelRequest,
   res: VercelResponse,
   roomId: string,
-): void {
+): Promise<void> {
   if (req.method !== 'GET') {
     methodNotAllowed(res, ['GET'])
     return
   }
 
-  const info = getRoomPublicInfo(roomId)
+  const info = await getRoomPublicInfo(roomId)
   if (!info) {
     res.status(404).json({ ok: false, error: 'Room not found' })
     return
@@ -139,11 +139,11 @@ export function handleRoomInfo(
   res.status(200).json({ ok: true, data: info })
 }
 
-export function handleRoomStream(
+export async function handleRoomStream(
   req: VercelRequest,
   res: VercelResponse,
   roomId: string,
-): void {
+): Promise<void> {
   if (req.method !== 'GET') {
     methodNotAllowed(res, ['GET'])
     return
@@ -155,7 +155,7 @@ export function handleRoomStream(
     return
   }
 
-  const room = getRoom(roomId)
+  const room = await getRoom(roomId)
   if (!room || !room.participants.has(participantId)) {
     res.status(404).json({ ok: false, error: 'Room or participant not found' })
     return
@@ -204,7 +204,7 @@ async function handleVote(req: VercelRequest, res: VercelResponse, roomId: strin
     return
   }
 
-  if (!castVote(roomId, body.participantId, body.value)) {
+  if (!await castVote(roomId, body.participantId, body.value)) {
     res.status(400).json({ ok: false, error: 'Unable to cast vote' })
     return
   }
@@ -225,7 +225,7 @@ async function handleReveal(req: VercelRequest, res: VercelResponse, roomId: str
     return
   }
 
-  if (!revealVotes(roomId, body.participantId)) {
+  if (!await revealVotes(roomId, body.participantId)) {
     res.status(403).json({ ok: false, error: 'Only the scrum master can reveal votes' })
     return
   }
@@ -246,7 +246,7 @@ async function handleReset(req: VercelRequest, res: VercelResponse, roomId: stri
     return
   }
 
-  if (!resetVotes(roomId, body.participantId)) {
+  if (!await resetVotes(roomId, body.participantId)) {
     res.status(403).json({ ok: false, error: 'Only the scrum master can reset votes' })
     return
   }
@@ -271,7 +271,7 @@ async function handleRole(req: VercelRequest, res: VercelResponse, roomId: strin
     return
   }
 
-  if (!setCreatorRole(roomId, body.participantId, body.role)) {
+  if (!await setCreatorRole(roomId, body.participantId, body.role)) {
     res.status(403).json({ ok: false, error: 'Only the room owner can choose their role once' })
     return
   }
@@ -296,7 +296,7 @@ async function handleScrumMaster(
     return
   }
 
-  if (!assignScrumMaster(roomId, body.participantId, body.scrumMasterId)) {
+  if (!await assignScrumMaster(roomId, body.participantId, body.scrumMasterId)) {
     res.status(403).json({
       ok: false,
       error: 'Only the room owner can assign a scrum master while playing as a participant',
@@ -320,7 +320,7 @@ async function handleLeave(req: VercelRequest, res: VercelResponse, roomId: stri
     return
   }
 
-  leaveRoom(body.participantId, roomId)
+  await leaveRoom(body.participantId, roomId)
   emitRoomState(roomId)
   res.status(200).json({ ok: true })
 }
@@ -337,7 +337,7 @@ async function handleDestroy(req: VercelRequest, res: VercelResponse, roomId: st
     return
   }
 
-  if (!destroyRoom(roomId, body.participantId)) {
+  if (!await destroyRoom(roomId, body.participantId)) {
     res.status(403).json({ ok: false, error: 'Only the room creator can close the room' })
     return
   }
@@ -362,7 +362,7 @@ async function handleAvatar(req: VercelRequest, res: VercelResponse, roomId: str
     return
   }
 
-  if (!updateParticipantAvatar(roomId, body.participantId, body.avatar)) {
+  if (!await updateParticipantAvatar(roomId, body.participantId, body.avatar)) {
     res.status(400).json({ ok: false, error: 'Unable to update avatar' })
     return
   }

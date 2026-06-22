@@ -1,4 +1,5 @@
 import type { ServerResponse } from 'node:http'
+import { isPersistentStorageEnabled } from './roomPersistence.js'
 import { getRoom, serializeRoom } from './rooms.js'
 
 export type SseResponse = Pick<ServerResponse, 'setHeader' | 'write' | 'on' | 'end'>
@@ -8,15 +9,20 @@ interface Subscriber {
   participantId: string
   res: SseResponse
   heartbeat: ReturnType<typeof setInterval>
+  poll?: ReturnType<typeof setInterval>
+  lastRevision: number
 }
 
 const subscribers = new Set<Subscriber>()
 
-function sendState(subscriber: Subscriber): void {
-  const room = getRoom(subscriber.roomId)
+async function sendState(subscriber: Subscriber): Promise<void> {
+  const room = await getRoom(subscriber.roomId)
   if (!room) return
 
+  if (!room.participants.has(subscriber.participantId)) return
+
   try {
+    subscriber.lastRevision = room.revision
     const state = serializeRoom(room, subscriber.participantId)
     subscriber.res.write(`event: room:state\ndata: ${JSON.stringify(state)}\n\n`)
   } catch {
@@ -26,6 +32,7 @@ function sendState(subscriber: Subscriber): void {
 
 function removeSubscriber(subscriber: Subscriber): void {
   clearInterval(subscriber.heartbeat)
+  if (subscriber.poll) clearInterval(subscriber.poll)
   subscribers.delete(subscriber)
 }
 
@@ -42,10 +49,23 @@ export function subscribe(roomId: string, participantId: string, res: SseRespons
     heartbeat: setInterval(() => {
       res.write(': heartbeat\n\n')
     }, 15000),
+    lastRevision: -1,
   }
 
   subscribers.add(subscriber)
-  sendState(subscriber)
+  void sendState(subscriber)
+
+  if (isPersistentStorageEnabled()) {
+    subscriber.poll = setInterval(() => {
+      void (async () => {
+        const room = await getRoom(subscriber.roomId)
+        if (!room || !room.participants.has(subscriber.participantId)) return
+        if (room.revision !== subscriber.lastRevision) {
+          await sendState(subscriber)
+        }
+      })()
+    }, 800)
+  }
 
   res.on('close', () => {
     removeSubscriber(subscriber)
@@ -56,7 +76,7 @@ export function emitRoomState(roomId: string): void {
   const normalizedRoomId = roomId.toUpperCase()
   for (const subscriber of subscribers) {
     if (subscriber.roomId === normalizedRoomId) {
-      sendState(subscriber)
+      void sendState(subscriber)
     }
   }
 }

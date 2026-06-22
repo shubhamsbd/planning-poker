@@ -1,6 +1,13 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { parseAvatar } from './avatars.js'
 import { createPasswordRecord, verifyPassword } from './password.js'
+import {
+  deletePersistedRoom,
+  loadPersistedRoom,
+  persistedRoomExists,
+  savePersistedRoom,
+  type PersistedRoom,
+} from './roomPersistence.js'
 import type { ClientRoomState, Participant, PokerCard } from './types.js'
 
 /** Creator + up to 10 teammates */
@@ -8,7 +15,7 @@ export const MAX_PARTICIPANTS = 11
 
 export type CreatorRole = 'pending' | 'player' | 'scrum_master'
 
-interface Room {
+export interface Room {
   id: string
   revealed: boolean
   creatorId: string
@@ -17,9 +24,8 @@ interface Room {
   passwordSalt: string | null
   passwordHash: string | null
   participants: Map<string, Participant>
+  revision: number
 }
-
-const rooms = new Map<string, Room>()
 
 export type JoinFailureReason =
   | 'not_found'
@@ -55,14 +61,41 @@ function toPublicParticipant(
   }
 }
 
-export function createRoom(
+function toRoom(persisted: PersistedRoom): Room {
+  return {
+    ...persisted,
+    participants: new Map(persisted.participants.map((participant) => [participant.id, participant])),
+  }
+}
+
+function toPersisted(room: Room): PersistedRoom {
+  return {
+    id: room.id,
+    revealed: room.revealed,
+    creatorId: room.creatorId,
+    creatorRole: room.creatorRole,
+    scrumMasterId: room.scrumMasterId,
+    passwordSalt: room.passwordSalt,
+    passwordHash: room.passwordHash,
+    participants: [...room.participants.values()],
+    revision: room.revision,
+  }
+}
+
+async function persistRoom(room: Room): Promise<Room> {
+  await savePersistedRoom(toPersisted(room))
+  const reloaded = await loadPersistedRoom(room.id)
+  return reloaded ? toRoom(reloaded) : room
+}
+
+export async function createRoom(
   name: string,
   preferredId?: string,
   password?: string,
   avatarInput?: unknown,
-): { room: Room; participantId: string } {
+): Promise<{ room: Room; participantId: string }> {
   let id = preferredId?.trim().toUpperCase() || generateRoomId()
-  if (rooms.has(id)) {
+  if (await persistedRoomExists(id)) {
     id = generateRoomId()
   }
 
@@ -89,18 +122,20 @@ export function createRoom(
     passwordSalt: credentials?.salt ?? null,
     passwordHash: credentials?.hash ?? null,
     participants: new Map([[participantId, host]]),
+    revision: 0,
   }
 
-  rooms.set(id, room)
-  return { room, participantId }
+  const saved = await persistRoom(room)
+  return { room: saved, participantId }
 }
 
-export function getRoom(roomId: string): Room | undefined {
-  return rooms.get(roomId.toUpperCase())
+export async function getRoom(roomId: string): Promise<Room | undefined> {
+  const persisted = await loadPersistedRoom(roomId)
+  return persisted ? toRoom(persisted) : undefined
 }
 
-export function getRoomPublicInfo(roomId: string): RoomPublicInfo | null {
-  const room = getRoom(roomId)
+export async function getRoomPublicInfo(roomId: string): Promise<RoomPublicInfo | null> {
+  const room = await getRoom(roomId)
   if (!room) return null
 
   return {
@@ -112,15 +147,16 @@ export function getRoomPublicInfo(roomId: string): RoomPublicInfo | null {
   }
 }
 
-export function joinRoom(
+export async function joinRoom(
   roomId: string,
   name: string,
   password?: string,
   avatarInput?: unknown,
-):
+): Promise<
   | { ok: true; room: Room; participantId: string }
-  | { ok: false; reason: JoinFailureReason } {
-  const room = getRoom(roomId)
+  | { ok: false; reason: JoinFailureReason }
+> {
+  const room = await getRoom(roomId)
   if (!room) return { ok: false, reason: 'not_found' }
 
   if (room.participants.size >= MAX_PARTICIPANTS) {
@@ -153,30 +189,32 @@ export function joinRoom(
     hasVoted: false,
   })
 
-  return { ok: true, room, participantId }
+  const saved = await persistRoom(room)
+  return { ok: true, room: saved, participantId }
 }
 
-export function updateParticipantAvatar(
+export async function updateParticipantAvatar(
   roomId: string,
   participantId: string,
   avatarInput: unknown,
-): boolean {
-  const room = getRoom(roomId)
+): Promise<boolean> {
+  const room = await getRoom(roomId)
   if (!room) return false
 
   const participant = room.participants.get(participantId)
   if (!participant) return false
 
   participant.avatar = parseAvatar(avatarInput, participant.name)
+  await persistRoom(room)
   return true
 }
 
-export function setCreatorRole(
+export async function setCreatorRole(
   roomId: string,
   requesterId: string,
   role: 'player' | 'scrum_master',
-): boolean {
-  const room = getRoom(roomId)
+): Promise<boolean> {
+  const room = await getRoom(roomId)
   if (!room || room.creatorId !== requesterId || room.creatorRole !== 'pending') {
     return false
   }
@@ -188,15 +226,16 @@ export function setCreatorRole(
     room.scrumMasterId = null
   }
 
+  await persistRoom(room)
   return true
 }
 
-export function assignScrumMaster(
+export async function assignScrumMaster(
   roomId: string,
   requesterId: string,
   scrumMasterId: string,
-): boolean {
-  const room = getRoom(roomId)
+): Promise<boolean> {
+  const room = await getRoom(roomId)
   if (!room || room.creatorId !== requesterId || room.creatorRole !== 'player') {
     return false
   }
@@ -205,11 +244,12 @@ export function assignScrumMaster(
   if (!room.participants.has(scrumMasterId)) return false
 
   room.scrumMasterId = scrumMasterId
+  await persistRoom(room)
   return true
 }
 
-export function leaveRoom(participantId: string, roomId: string): void {
-  const room = getRoom(roomId)
+export async function leaveRoom(participantId: string, roomId: string): Promise<void> {
+  const room = await getRoom(roomId)
   if (!room) return
 
   room.participants.delete(participantId)
@@ -219,19 +259,26 @@ export function leaveRoom(participantId: string, roomId: string): void {
   }
 
   if (room.participants.size === 0) {
-    rooms.delete(room.id)
+    await deletePersistedRoom(room.id)
+    return
   }
+
+  await persistRoom(room)
 }
 
-export function destroyRoom(roomId: string, requesterId: string): boolean {
-  const room = getRoom(roomId)
+export async function destroyRoom(roomId: string, requesterId: string): Promise<boolean> {
+  const room = await getRoom(roomId)
   if (!room || room.creatorId !== requesterId) return false
-  rooms.delete(room.id)
+  await deletePersistedRoom(room.id)
   return true
 }
 
-export function castVote(roomId: string, participantId: string, value: PokerCard): boolean {
-  const room = getRoom(roomId)
+export async function castVote(
+  roomId: string,
+  participantId: string,
+  value: PokerCard,
+): Promise<boolean> {
+  const room = await getRoom(roomId)
   if (!room || room.revealed) return false
   if (room.scrumMasterId === participantId) return false
 
@@ -240,18 +287,20 @@ export function castVote(roomId: string, participantId: string, value: PokerCard
 
   participant.vote = value
   participant.hasVoted = true
+  await persistRoom(room)
   return true
 }
 
-export function revealVotes(roomId: string, requesterId: string): boolean {
-  const room = getRoom(roomId)
+export async function revealVotes(roomId: string, requesterId: string): Promise<boolean> {
+  const room = await getRoom(roomId)
   if (!room || room.scrumMasterId !== requesterId) return false
   room.revealed = true
+  await persistRoom(room)
   return true
 }
 
-export function resetVotes(roomId: string, requesterId: string): boolean {
-  const room = getRoom(roomId)
+export async function resetVotes(roomId: string, requesterId: string): Promise<boolean> {
+  const room = await getRoom(roomId)
   if (!room || room.scrumMasterId !== requesterId) return false
 
   room.revealed = false
@@ -259,6 +308,7 @@ export function resetVotes(roomId: string, requesterId: string): boolean {
     participant.vote = null
     participant.hasVoted = false
   }
+  await persistRoom(room)
   return true
 }
 
