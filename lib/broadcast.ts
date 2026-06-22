@@ -1,5 +1,5 @@
 import type { ServerResponse } from 'node:http'
-import { getRoom, leaveRoom, serializeRoom } from './rooms.js'
+import { getRoom, serializeRoom } from './rooms.js'
 
 export type SseResponse = Pick<ServerResponse, 'setHeader' | 'write' | 'on' | 'end'>
 
@@ -49,8 +49,6 @@ export function subscribe(roomId: string, participantId: string, res: SseRespons
 
   res.on('close', () => {
     removeSubscriber(subscriber)
-    leaveRoom(participantId, roomId)
-    emitRoomState(roomId)
   })
 }
 

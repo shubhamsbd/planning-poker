@@ -9,6 +9,7 @@ export default function App() {
     error,
     room,
     inviteRoomId,
+    restoringSession,
     createRoom,
     joinRoom,
     castVote,
@@ -35,6 +36,14 @@ export default function App() {
         onUpdateAvatar={updateAvatar}
         onLeave={leaveRoom}
       />
+    )
+  }
+
+  if (restoringSession) {
+    return (
+      <div className="mx-auto flex min-h-screen max-w-lg items-center justify-center px-4">
+        <p className="text-muted text-sm">Reconnecting to your room…</p>
+      </div>
     )
   }
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { clearRoomSession, loadRoomSession, saveRoomSession } from '../lib/roomSession'
 import { clearInvitePath, parseInviteRoomId, setInvitePath } from '../lib/urls'
 import type { Avatar } from '../lib/avatars'
 import { avatarForSession, saveCustomizedAvatar, saveName } from '../lib/userProfile'
@@ -27,8 +28,14 @@ export function usePokerRoom() {
   const [error, setError] = useState<string | null>(null)
   const [room, setRoom] = useState<ClientRoomState | null>(null)
   const [inviteRoomId, setInviteRoomId] = useState<string | null>(() => parseInviteRoomId())
+  const [restoringSession, setRestoringSession] = useState(() => {
+    const urlRoomId = parseInviteRoomId()
+    const saved = loadRoomSession()
+    return Boolean(saved && (!urlRoomId || urlRoomId === saved.roomId))
+  })
   const eventSourceRef = useRef<EventSource | null>(null)
   const sessionRef = useRef<{ roomId: string; participantId: string } | null>(null)
+  const restoringRef = useRef(restoringSession)
 
   useEffect(() => {
     function syncInviteFromUrl() {
@@ -47,27 +54,40 @@ export function usePokerRoom() {
     (message: string) => {
       closeStream()
       sessionRef.current = null
+      clearRoomSession()
       setRoom(null)
       clearInvitePath()
       setInviteRoomId(null)
+      setRestoringSession(false)
       setError(message)
     },
     [closeStream],
   )
 
+  const finishRestore = useCallback(() => {
+    restoringRef.current = false
+    setRestoringSession(false)
+    clearRoomSession()
+  }, [])
+
   const subscribe = useCallback(
     (roomId: string, participantId: string) => {
       closeStream()
-      sessionRef.current = { roomId, participantId }
-      setInvitePath(roomId)
+      const session = { roomId: roomId.trim().toUpperCase(), participantId }
+      sessionRef.current = session
+      saveRoomSession(session)
+      setInvitePath(session.roomId)
 
       const stream = new EventSource(
-        `${API_BASE}/api/rooms/${encodeURIComponent(roomId)}/stream?participantId=${encodeURIComponent(participantId)}`,
+        `${API_BASE}/api/rooms/${encodeURIComponent(session.roomId)}/stream?participantId=${encodeURIComponent(participantId)}`,
       )
 
       stream.addEventListener('room:state', (event) => {
+        restoringRef.current = false
+        setRestoringSession(false)
         setRoom(normalizeRoomState(JSON.parse(event.data) as ClientRoomState))
         setError(null)
+        setConnected(true)
       })
 
       stream.addEventListener('room:closed', (event) => {
@@ -77,12 +97,33 @@ export function usePokerRoom() {
 
       stream.onerror = () => {
         setConnected(false)
+        if (restoringRef.current) {
+          finishRestore()
+        }
       }
 
       eventSourceRef.current = stream
     },
-    [closeStream, handleRoomClosed],
+    [closeStream, finishRestore, handleRoomClosed],
   )
+
+  useEffect(() => {
+    const urlRoomId = parseInviteRoomId()
+    const saved = loadRoomSession()
+    if (!saved) {
+      setRestoringSession(false)
+      return
+    }
+    if (urlRoomId && urlRoomId !== saved.roomId) {
+      clearRoomSession()
+      setRestoringSession(false)
+      return
+    }
+
+    restoringRef.current = true
+    setRestoringSession(true)
+    subscribe(saved.roomId, saved.participantId)
+  }, [subscribe])
 
   useEffect(() => {
     let cancelled = false
@@ -242,10 +283,12 @@ export function usePokerRoom() {
 
     closeStream()
     sessionRef.current = null
+    clearRoomSession()
     setRoom(null)
     setError(null)
     clearInvitePath()
     setInviteRoomId(null)
+    setRestoringSession(false)
   }, [closeStream])
 
   return {
@@ -253,6 +296,7 @@ export function usePokerRoom() {
     error,
     room,
     inviteRoomId,
+    restoringSession,
     createRoom,
     joinRoom,
     castVote,
